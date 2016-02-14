@@ -25,6 +25,12 @@
             android:text="Mover"
             android:id="@+id/bt_test" />
 
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Animation"
+            android:id="@+id/bt_animation" />
+
     </LinearLayout>
 
 

@@ -25,6 +25,7 @@ import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.Projection;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
@@ -45,13 +46,14 @@ import es.ric.bluetoothgps.nmea.BTGPSPosition;
 public class MainActivity extends FragmentActivity implements BTGPSListener,OnMapReadyCallback {
 
     ListView lv_lista_bluetooth;
-    Button bt_stop,bt_test;
+    Button bt_stop,bt_test,bt_animation;
     BTConnectThread hilo_bluetooh;
 
     List<BTGPSPosition> list_locations;
 
     GoogleMap mMap;
     Marker marker;
+    LatLng mi_casa = new LatLng(40.434229, -3.712912);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -63,15 +65,27 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
         list_locations = new ArrayList<BTGPSPosition>();
 
         lv_lista_bluetooth = (ListView) findViewById(R.id.lv_lista_bluetooth);
+        bt_animation = (Button) findViewById(R.id.bt_animation);
+        bt_animation.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+
+                List<LatLng> trip_points = getPath();
+                new MarkerAnimation().animateLine(trip_points,mMap,marker,MainActivity.this);
+            }
+        });
+
         bt_test = (Button) findViewById(R.id.bt_test);
         bt_test.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
 
-                animateMarker(marker,new LatLng(40.434278, -3.712051),false);
-//                marker.setPosition();
+                List<LatLng> trip_points = getPath();
+                animateMarkerList(marker,false,trip_points);
+
             }
         });
+
         bt_stop = (Button) findViewById(R.id.bt_stop);
         bt_stop.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -88,6 +102,7 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
 
                     for (BTGPSPosition position : list_locations) {
                         f.write(position.toString().getBytes());
+                        f.write("\n".getBytes());
                     }
 
                     f.close();
@@ -135,6 +150,26 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
 
     }
 
+    private List<LatLng> getPath(){
+        double factor_lon = 0.0002d;
+        double factor_lat = 0.0002d;
+        List<LatLng> trip_points = new ArrayList<LatLng>();
+        trip_points.add(new LatLng(mi_casa.latitude, mi_casa.longitude + factor_lon));
+        trip_points.add(new LatLng(mi_casa.latitude, mi_casa.longitude+factor_lon*2));
+        trip_points.add(new LatLng(mi_casa.latitude, mi_casa.longitude + factor_lon * 3));
+        trip_points.add(new LatLng(mi_casa.latitude, mi_casa.longitude+factor_lon*4));
+        trip_points.add(new LatLng(mi_casa.latitude, mi_casa.longitude + factor_lon * 5));
+        trip_points.add(new LatLng(mi_casa.latitude, mi_casa.longitude+factor_lon*6));
+        trip_points.add(new LatLng(mi_casa.latitude, mi_casa.longitude+factor_lon*7));
+        trip_points.add(new LatLng(mi_casa.latitude+factor_lat, mi_casa.longitude+factor_lon*7));
+        trip_points.add(new LatLng(mi_casa.latitude+factor_lat*2, mi_casa.longitude+factor_lon*7));
+        trip_points.add(new LatLng(mi_casa.latitude+factor_lat*3, mi_casa.longitude+factor_lon*7));
+        trip_points.add(new LatLng(mi_casa.latitude+factor_lat*4, mi_casa.longitude+factor_lon*7));
+        trip_points.add(new LatLng(mi_casa.latitude + factor_lat * 5, mi_casa.longitude + factor_lon * 7));
+        trip_points.add(new LatLng(mi_casa.latitude + factor_lat * 6, mi_casa.longitude + factor_lon * 7));
+        return trip_points;
+    }
+
     @Override
     public void update(final BTGPSPosition position, String nmea_message) {
         this.runOnUiThread(new Runnable() {
@@ -169,11 +204,13 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
-        LatLng mi_casa = new LatLng(40.4342821,-3.7152397);
         CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(mi_casa, 17);
         mMap.animateCamera(cameraUpdate);
 
-        MarkerOptions a = new MarkerOptions().position(mi_casa);
+        MarkerOptions a = new MarkerOptions()
+                .position(mi_casa)
+                .icon(BitmapDescriptorFactory.fromResource(R.drawable.blue_dot));
+
         marker = mMap.addMarker(a);
         marker.setPosition(mi_casa);
     }
@@ -185,7 +222,7 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
         Projection proj = mMap.getProjection();
         Point startPoint = proj.toScreenLocation(marker.getPosition());
         final LatLng startLatLng = proj.fromScreenLocation(startPoint);
-        final long duration = 500;
+        final long duration = 1000;
 
         final Interpolator interpolator = new LinearInterpolator();
 
@@ -195,10 +232,8 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
                 long elapsed = SystemClock.uptimeMillis() - start;
                 float t = interpolator.getInterpolation((float) elapsed
                         / duration);
-                double lng = t * toPosition.longitude + (1 - t)
-                        * startLatLng.longitude;
-                double lat = t * toPosition.latitude + (1 - t)
-                        * startLatLng.latitude;
+                double lng = t * toPosition.longitude + (1 - t) * startLatLng.longitude;
+                double lat = t * toPosition.latitude + (1 - t) * startLatLng.latitude;
                 marker.setPosition(new LatLng(lat, lng));
 
                 if (t < 1.0) {
@@ -210,6 +245,52 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
                     } else {
                         marker.setVisible(true);
                     }
+                }
+            }
+        });
+    }
+
+    public void animateMarkerList(  final Marker marker,
+                                    final boolean hideMarker,
+                                    final List<LatLng> lista) {
+        final Handler handler = new Handler();
+        final long start = SystemClock.uptimeMillis();
+        Projection proj = mMap.getProjection();
+        Point startPoint = proj.toScreenLocation(marker.getPosition());
+        final LatLng startLatLng = proj.fromScreenLocation(startPoint);
+        final long duration = 1000;//1 second
+
+        final LatLng toPosition = lista.get(0);
+
+        final Interpolator interpolator = new LinearInterpolator();
+
+        handler.post(new Runnable() {
+            @Override
+            public void run() {
+                long elapsed = SystemClock.uptimeMillis() - start;
+                float t = interpolator.getInterpolation((float) elapsed
+                        / duration);
+                double lng = t * toPosition.longitude + (1 - t) * startLatLng.longitude;
+                double lat = t * toPosition.latitude + (1 - t) * startLatLng.latitude;
+                marker.setPosition(new LatLng(lat, lng));
+
+                if (t < 1.0) {
+                    // Post again 16ms later.
+                    handler.postDelayed(this, 16);
+                } else {
+
+                    lista.remove(0);
+                    if(lista.size()>0){
+                        animateMarkerList(marker,hideMarker,lista);
+                    }
+                    else{
+                        if (hideMarker) {
+                            marker.setVisible(false);
+                        } else {
+                            marker.setVisible(true);
+                        }
+                    }
+
                 }
             }
         });
