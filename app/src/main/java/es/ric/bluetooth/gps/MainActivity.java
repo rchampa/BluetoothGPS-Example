@@ -2,6 +2,7 @@ package es.ric.bluetooth.gps;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.graphics.Color;
 import android.graphics.Point;
 import android.os.Bundle;
 import android.os.Environment;
@@ -29,6 +30,8 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.Polyline;
+import com.google.android.gms.maps.model.PolylineOptions;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -81,7 +84,7 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
             public void onClick(View v) {
 
                 List<LatLng> trip_points = getPath();
-                animateMarkerList(marker,false,trip_points);
+                animateMarkerList(marker,false,trip_points, true);
 
             }
         });
@@ -252,7 +255,8 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
 
     public void animateMarkerList(  final Marker marker,
                                     final boolean hideMarker,
-                                    final List<LatLng> lista) {
+                                    final List<LatLng> lista,
+                                    final boolean show_path) {
         final Handler handler = new Handler();
         final long start = SystemClock.uptimeMillis();
         Projection proj = mMap.getProjection();
@@ -267,12 +271,19 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
         handler.post(new Runnable() {
             @Override
             public void run() {
+                final LatLng fromPosition = new LatLng(marker.getPosition().latitude, marker.getPosition().longitude);
                 long elapsed = SystemClock.uptimeMillis() - start;
                 float t = interpolator.getInterpolation((float) elapsed
                         / duration);
                 double lng = t * toPosition.longitude + (1 - t) * startLatLng.longitude;
                 double lat = t * toPosition.latitude + (1 - t) * startLatLng.latitude;
                 marker.setPosition(new LatLng(lat, lng));
+                if(show_path) {
+                    final PolylineOptions options = new PolylineOptions().width(5).color(Color.BLUE).geodesic(true);
+                    options.add(fromPosition);
+                    options.add(marker.getPosition());
+                    Polyline line = mMap.addPolyline(options);
+                }
 
                 if (t < 1.0) {
                     // Post again 16ms later.
@@ -280,8 +291,9 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
                 } else {
 
                     lista.remove(0);
+
                     if(lista.size()>0){
-                        animateMarkerList(marker,hideMarker,lista);
+                        animateMarkerList(marker, hideMarker, lista, show_path);
                     }
                     else{
                         if (hideMarker) {
