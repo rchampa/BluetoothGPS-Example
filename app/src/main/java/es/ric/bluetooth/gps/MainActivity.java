@@ -189,7 +189,8 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                 }
             }
             else if(intent.getAction().equals(ServiceBluetoothGPS.ACTION_CONNECTION_SUCCESS)) {
-                Toast.makeText(MainActivity.this, "Conexión establecida", Toast.LENGTH_SHORT).show();
+                BluetoothDevice device = intent.getExtras().getParcelable(ServiceBluetoothGPS.DEVICE);
+                Toast.makeText(MainActivity.this, "Conexión establecida "+device.getName(), Toast.LENGTH_SHORT).show();
             }
             else if(intent.getAction().equals(ServiceBluetoothGPS.ACTION_CANT_REACH_CONNECTION)) {
                 Toast.makeText(MainActivity.this, "No se ha podido establecer la conexión", Toast.LENGTH_SHORT).show();
