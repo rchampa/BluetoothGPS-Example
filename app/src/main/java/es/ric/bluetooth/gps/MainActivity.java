@@ -2,8 +2,13 @@ package es.ric.bluetooth.gps;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Color;
 import android.graphics.Point;
+import android.location.Location;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
@@ -17,7 +22,6 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ListView;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.android.gms.maps.CameraUpdate;
@@ -41,18 +45,17 @@ import java.util.List;
 import java.util.Set;
 
 import es.ric.bluetoothgps.BTConnectThread;
-import es.ric.bluetoothgps.BTGPSListener;
 import es.ric.bluetoothgps.MyBluetoohDevice;
-import es.ric.bluetoothgps.nmea.BTGPSPosition;
+import es.ric.bluetoothgps.ServiceBluetoothGPS;
 
 
-public class MainActivity extends FragmentActivity implements BTGPSListener,OnMapReadyCallback {
+public class MainActivity extends FragmentActivity implements OnMapReadyCallback {
 
     ListView lv_lista_bluetooth;
     Button bt_stop,bt_test,bt_animation;
     BTConnectThread hilo_bluetooh;
 
-    List<BTGPSPosition> list_locations;
+    List<Location> list_locations;
 
     GoogleMap mMap;
     Marker marker;
@@ -65,7 +68,15 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
 
-        list_locations = new ArrayList<BTGPSPosition>();
+        IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(ServiceBluetoothGPS.ACTION_CONNECTION_SUCCESS);
+        intentFilter.addAction(ServiceBluetoothGPS.ACTION_CONNECTION_CLOSED);
+        intentFilter.addAction(ServiceBluetoothGPS.ACTION_CONNECTION_ERROR);
+        intentFilter.addAction(ServiceBluetoothGPS.ACTION_CANT_REACH_CONNECTION);
+        intentFilter.addAction(ServiceBluetoothGPS.ACTION_NEW_LOCATION);
+        registerReceiver(intentReceiver, intentFilter);
+
+        list_locations = new ArrayList<Location>();
 
         lv_lista_bluetooth = (ListView) findViewById(R.id.lv_lista_bluetooth);
         bt_animation = (Button) findViewById(R.id.bt_animation);
@@ -94,7 +105,9 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
             @Override
             public void onClick(View v) {
                 try {
-                    hilo_bluetooh.stopConnection();
+                    if(ServiceBluetoothGPS.getInstance()!=null){
+                        ServiceBluetoothGPS.getInstance().stopGPS();
+                    }
 
                     File sdCard = Environment.getExternalStorageDirectory();
                     File dir = new File(sdCard.getAbsolutePath() + "/gps_logs");
@@ -103,7 +116,7 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
                     File file = new File(dir, now.getTime() + ".txt");
                     FileOutputStream f = new FileOutputStream(file);
 
-                    for (BTGPSPosition position : list_locations) {
+                    for (Location position : list_locations) {
                         f.write(position.toString().getBytes());
                         f.write("\n".getBytes());
                     }
@@ -140,18 +153,56 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 MyBluetoohDevice device = (MyBluetoohDevice) parent.getItemAtPosition(position);
-                Toast.makeText(MainActivity.this, device.toString(), Toast.LENGTH_SHORT).show();
-                try {
-                    hilo_bluetooh = new BTConnectThread(device.getDevice(), mBluetoothAdapter, MainActivity.this, 0);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-                hilo_bluetooh.start();
+
+                Intent msgIntent = new Intent(MainActivity.this, ServiceBluetoothGPS.class);
+                msgIntent.putExtra(ServiceBluetoothGPS.DEVICE, device.getDevice());
+                msgIntent.putExtra(ServiceBluetoothGPS.REFRESH_TIME, 0l);
+                MainActivity.this.startService(msgIntent);
+//                hilo_bluetooh = new BTConnectThread(device.getDevice(), mBluetoothAdapter, MainActivity.this, 0);
+
             }
         });
 
 
     }
+
+    private BroadcastReceiver intentReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context arg0, Intent intent) {
+
+            if (intent.getAction().equals(ServiceBluetoothGPS.ACTION_NEW_LOCATION)) {
+                Bundle bundle = intent.getExtras();
+                Location position = bundle.getParcelable(ServiceBluetoothGPS.POSICION);
+                Log.d("location",position.toString());
+                LatLng nueva_posicion = new LatLng(position.getLatitude(), position.getLongitude());
+                marker.setPosition(nueva_posicion);
+                CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(nueva_posicion, 17);
+                mMap.moveCamera(cameraUpdate);
+
+                list_locations.add(position);
+                if (list_locations.size() > 1) {
+                    int n = list_locations.size();
+                    Location last_position = list_locations.get(n - 1);
+
+                    float meters = last_position.distanceTo(position);
+//                   tv_output.setText(position.toString() + " dif:" + meters + "m");
+                }
+            }
+            else if(intent.getAction().equals(ServiceBluetoothGPS.ACTION_CONNECTION_SUCCESS)) {
+                Toast.makeText(MainActivity.this, "Conexión establecida", Toast.LENGTH_SHORT).show();
+            }
+            else if(intent.getAction().equals(ServiceBluetoothGPS.ACTION_CANT_REACH_CONNECTION)) {
+                Toast.makeText(MainActivity.this, "No se ha podido establecer la conexión", Toast.LENGTH_SHORT).show();
+            }
+            else if(intent.getAction().equals(ServiceBluetoothGPS.ACTION_CONNECTION_ERROR)) {
+                Toast.makeText(MainActivity.this, "Se ha perdido la conexión", Toast.LENGTH_SHORT).show();
+            }
+            else if(intent.getAction().equals(ServiceBluetoothGPS.ACTION_CONNECTION_CLOSED)) {
+                Toast.makeText(MainActivity.this, "Se ha cerrado la conexión", Toast.LENGTH_SHORT).show();
+            }
+
+        }
+    };
 
     private List<LatLng> getPath(){
         double factor_lon = 0.0002d;
@@ -173,36 +224,6 @@ public class MainActivity extends FragmentActivity implements BTGPSListener,OnMa
         return trip_points;
     }
 
-    @Override
-    public void update(final BTGPSPosition position, String nmea_message) {
-        this.runOnUiThread(new Runnable() {
-           @Override
-           public void run() {
-               LatLng nueva_posicion = new LatLng(position.lat, position.lon);
-               marker.setPosition(nueva_posicion);
-               CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(nueva_posicion, 17);
-               mMap.moveCamera(cameraUpdate);
-
-               list_locations.add(position);
-               if (list_locations.size() > 1) {
-
-
-
-                   int n = list_locations.size();
-                   BTGPSPosition last_position = list_locations.get(n - 1);
-
-                   float meters = last_position.getLocation().distanceTo(position.getLocation());
-//                   tv_output.setText(position.toString() + " dif:" + meters + "m");
-               }
-
-
-           }
-        });
-
-        Log.d("GPS", nmea_message);
-        Log.d("GPS", position.toString());
-
-    }
 
     @Override
     public void onMapReady(GoogleMap googleMap) {
